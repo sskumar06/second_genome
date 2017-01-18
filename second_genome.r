@@ -80,13 +80,73 @@ model_input_refined <- model_input[, c("Feature", "y", rf_variables[,"variable_l
 validation_non_halo_tolerant_refined <- validation_non_halo_tolerant[, c("Feature", "y", rf_variables[,"variable_list"])]
 validation_halo_tolerant_refined <- validation_halo_tolerant[, c("Feature", "y", rf_variables[,"variable_list"])]
 
+##Testing data
+test_data <- read.csv("output_test_canine.out", stringsAsFactors = F)
+test_data <- test_data[c(1:(nrow(test_data)-2)),]
+test_data[,2] <- as.numeric(test_data[,2])
+
 ## Model Training - Random Forest
 rf_model <- randomForest(y=as.factor(model_input_refined$y), x=model_input_refined[, c(3:240)], ntree=1000, proximity = T)
 
 
 ## Validation - Random Forest
-validation_non_halo_tolerant_refined$prediction <- predict(rf_model, newdata = validation_non_halo_tolerant_refined, type="response")
-validation_halo_tolerant_refined$prediction <- predict(rf_model, newdata = validation_halo_tolerant_refined, type="response")
+validation_non_halo_tolerant_refined$prediction_rf <- predict(rf_model, newdata = validation_non_halo_tolerant_refined, type="response")
+length(validation_non_halo_tolerant_refined[validation_non_halo_tolerant_refined$y==validation_non_halo_tolerant_refined$prediction_rf,1])/nrow(validation_non_halo_tolerant_refined)
+validation_halo_tolerant_refined$prediction_rf <- predict(rf_model, newdata = validation_halo_tolerant_refined, type="response")
+length(validation_halo_tolerant_refined[validation_halo_tolerant_refined$y==validation_halo_tolerant_refined$prediction_rf,1])/nrow(validation_halo_tolerant_refined)
 
+prediction <- validation_non_halo_tolerant_refined[,c("Feature", "y", "prediction_rf")]
+prediction <- rbind(prediction, validation_halo_tolerant_refined[,c("Feature", "y", "prediction_rf")])
+length(prediction[prediction$y==prediction$prediction_rf,1])/nrow(prediction)
+
+save.image("1_17_2017.RData")
+
+
+## Test - Random Forest
+
+test_data$test_rf <- predict(rf_model, newdata = test_data, type="response")
+
+
+### PLS Regression
+library(pls)
+temp <- "c"
+for(c in colnames(model_input_refined[, c(3:240)])){
+  temp <- paste0(temp, "+", c)
+}
+temp <- substr(temp, 3, nchar(temp))
+plsr_model <- plsr(y ~ . - Feature, data=model_input_refined, ncomp = 10, validation = "LOO")
+plot(RMSEP(plsr_model), legendpos = "topright")
+RMSEP(plsr_model)
+
+validation_non_halo_tolerant_refined$X.G1.1.1.1. <- as.numeric(validation_non_halo_tolerant_refined$X.G1.1.1.1.)
+validation_non_halo_tolerant_refined$prediction_plsr <- predict(plsr_model, ncomp = 2, newdata = validation_non_halo_tolerant_refined)
+validation_non_halo_tolerant_refined$prediction_plsr_class <- ifelse(validation_non_halo_tolerant_refined$prediction_plsr >=0.5, 1, 0)
+RMSEP(plsr_model, newdata = validation_non_halo_tolerant_refined)
+length(validation_non_halo_tolerant_refined[validation_non_halo_tolerant_refined$y==validation_non_halo_tolerant_refined$prediction_plsr_class,1])/nrow(validation_non_halo_tolerant_refined)
+
+write.csv(validation_non_halo_tolerant_refined[,c("Feature", "y", "prediction_plsr", "prediction_plsr_class")], "validation_non_halo_tolerant_refined.csv")
+
+validation_halo_tolerant_refined$X.G1.1.1.1. <- as.numeric(validation_halo_tolerant_refined$X.G1.1.1.1.)
+validation_halo_tolerant_refined$prediction_plsr <- predict(plsr_model, ncomp = 2, newdata = validation_halo_tolerant_refined)
+validation_halo_tolerant_refined$prediction_plsr_class <- ifelse(validation_halo_tolerant_refined$prediction_plsr >=0.5, 1, 0)
+RMSEP(plsr_model, newdata = validation_halo_tolerant_refined)
+length(validation_halo_tolerant_refined[validation_halo_tolerant_refined$y==validation_halo_tolerant_refined$prediction_plsr_class,1])/nrow(validation_halo_tolerant_refined)
+temp_plsr <- rbind(validation_non_halo_tolerant_refined[,c("Feature", "y", "prediction_plsr", "prediction_plsr_class")], validation_halo_tolerant_refined[,c("Feature", "y", "prediction_plsr", "prediction_plsr_class")])
+
+prediction <- merge(prediction, temp_plsr[,c("Feature", "prediction_plsr", "prediction_plsr_class")], by="Feature")
+length(prediction[prediction$y==prediction$prediction_plsr_class,1])/nrow(prediction)
+
+test_data$test_plsr <- predict(plsr_model, ncomp = 2, newdata = test_data)
+test_data$test_plsr_class <- ifelse(test_data$test_plsr >= 0.5, 1, 0)
+
+###Save the results
+write.csv(prediction, "prediction.csv")
+write.csv(test_data, "test_data.csv")
+write.csv(validation_non_halo_tolerant_refined, "validation_non_halo_tolerant_refined.csv")
+write.csv(validation_halo_tolerant_refined, "validation_halo_tolerant_refined.csv")
+
+
+###Save workspace
+save.image("workspace_1_17_2017_21_14_PM.RData")
 
 
